@@ -93,8 +93,7 @@ jobs:
           cp target/${{ matrix.target }}/release/mitepc package/mitepc/
           cp setup.conf package/mitepc/
           cp README.md  package/mitepc/ 2>/dev/null || true
-          cd package
-          tar czf ../../mitepc-${{ matrix.artifact-suffix }}.tar.gz mitepc/
+          tar czf mitepc-${{ matrix.artifact-suffix }}.tar.gz -C package mitepc/
 
       - name: Package Windows archive
         if: runner.os == 'Windows'

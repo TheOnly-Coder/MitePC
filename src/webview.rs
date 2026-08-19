@@ -261,8 +261,7 @@ mod gui_backend {
                     data.os.cpu.run_cycles(&mut data.os.ram, 100);
                 }
                 let state = build_state(&webview.user_data().os);
-                let state_str = serde_json::to_string(&state)
-                    .map_err(|e| WVError::Custom(e.to_string()))?;
+                let Ok(state_str) = serde_json::to_string(&state) else { return Ok(()) };
                 let _ = webview.eval(&format!("updateState({})", state_str));
             }
 
@@ -271,8 +270,7 @@ mod gui_backend {
                 let _state_before = webview.user_data().os.boot_complete();
                 webview.user_data_mut().os.handle_key_webview(key);
                 let state = build_state(&webview.user_data().os);
-                let state_str = serde_json::to_string(&state)
-                    .map_err(|e| WVError::Custom(e.to_string()))?;
+                let Ok(state_str) = serde_json::to_string(&state) else { return Ok(()) };
                 let _ = webview.eval(&format!("updateState({})", state_str));
             }
 
@@ -280,8 +278,7 @@ mod gui_backend {
                 if let Some(idx) = cmd["index"].as_u64() {
                     webview.user_data_mut().os.open_app_by_index(idx as usize);
                     let state = build_state(&webview.user_data().os);
-                    let state_str = serde_json::to_string(&state)
-                    .map_err(|e| WVError::Custom(e.to_string()))?;
+                    let Ok(state_str) = serde_json::to_string(&state) else { return Ok(()) };
                     let _ = webview.eval(&format!("updateState({})", state_str));
                 }
             }
@@ -290,8 +287,7 @@ mod gui_backend {
                 if let Some(id) = cmd["id"].as_u64() {
                     webview.user_data_mut().os.close_window(id as usize);
                     let state = build_state(&webview.user_data().os);
-                    let state_str = serde_json::to_string(&state)
-                    .map_err(|e| WVError::Custom(e.to_string()))?;
+                    let Ok(state_str) = serde_json::to_string(&state) else { return Ok(()) };
                     let _ = webview.eval(&format!("updateState({})", state_str));
                 }
             }
@@ -300,8 +296,7 @@ mod gui_backend {
                 if let Some(id) = cmd["id"].as_u64() {
                     webview.user_data_mut().os.focus_window(id as usize);
                     let state = build_state(&webview.user_data().os);
-                    let state_str = serde_json::to_string(&state)
-                    .map_err(|e| WVError::Custom(e.to_string()))?;
+                    let Ok(state_str) = serde_json::to_string(&state) else { return Ok(()) };
                     let _ = webview.eval(&format!("updateState({})", state_str));
                 }
             }
@@ -309,8 +304,7 @@ mod gui_backend {
             "boot_enter" => {
                 webview.user_data_mut().os.force_boot_complete();
                 let state = build_state(&webview.user_data().os);
-                let state_str = serde_json::to_string(&state)
-                    .map_err(|e| WVError::Custom(e.to_string()))?;
+                let Ok(state_str) = serde_json::to_string(&state) else { return Ok(()) };
                 let _ = webview.eval(&format!("updateState({})", state_str));
             }
 

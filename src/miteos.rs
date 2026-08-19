@@ -44,7 +44,7 @@ pub struct OsContext {
 }
 
 impl OsContext {
-    fn from_os(os: &MiteOS) -> Self {
+    pub(crate) fn from_os(os: &MiteOS) -> Self {
         let (tb, fb, ti, fi, _fdb, tsz) = os.fs.stats();
         Self {
             ram_size: os.ram.size(),

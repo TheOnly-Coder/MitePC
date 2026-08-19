@@ -124,13 +124,24 @@ let highestZ = 10;
 let pollInterval = null;
 let terminalInputFocused = null;
 
+// ---- Safe invoke (handles race where polyfill isn't injected yet) ----
+function safeInvoke(msg) {
+    try {
+        if (window.external && typeof window.external.invoke === 'function') {
+            window.external.invoke(msg);
+            return true;
+        }
+    } catch(e) {}
+    return false;
+}
+
 // ---- Boot screen keyboard handler ----
 document.addEventListener('keydown', function(e) {
     if (!currentState) return;
     if (currentState.phase === 'boot') {
         if (e.code === 'Enter') {
             e.preventDefault();
-            window.external.invoke(JSON.stringify({type:'boot_enter'}));
+            safeInvoke(JSON.stringify({type:'boot_enter'}));
         }
         return;
     }
@@ -140,7 +151,7 @@ document.addEventListener('keydown', function(e) {
         if (e.code === 'Enter' || e.code === 'Backspace' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
             e.preventDefault();
         }
-        window.external.invoke(JSON.stringify({
+        safeInvoke(JSON.stringify({
             type: 'key',
             code: e.code,
             key: e.key,
@@ -152,12 +163,12 @@ document.addEventListener('keydown', function(e) {
     }
     // Global desktop shortcuts
     if (e.ctrlKey && e.key === 'c') {
-        window.external.invoke(JSON.stringify({type:'key', code:'Escape', key:'Escape', ctrlKey:true, altKey:false, shiftKey:false}));
+        safeInvoke(JSON.stringify({type:'key', code:'Escape', key:'Escape', ctrlKey:true, altKey:false, shiftKey:false}));
         return;
     }
     // Route all keys to OS
     e.preventDefault();
-    window.external.invoke(JSON.stringify({
+    safeInvoke(JSON.stringify({
         type: 'key',
         code: e.code,
         key: e.key,
@@ -202,7 +213,7 @@ function renderBoot(container) {
     if (boot.cursorVisible) {
         html += '<span id="boot-cursor">_</span>';
     }
-    html += '<div id="boot-prompt" onclick="window.external.invoke(JSON.stringify({type:\'boot_enter\'}))">Press Enter to start desktop...</div>';
+    html += '<div id="boot-prompt" onclick="safeInvoke(JSON.stringify({type:\'boot_enter\'}))">Press Enter to start desktop...</div>';
     html += '</div>';
     container.innerHTML = html;
 }
@@ -413,16 +424,16 @@ function renderTaskbar(taskbar, tb, c) {
 // ---- Interaction ----
 
 function onIconClick(index) {
-    window.external.invoke(JSON.stringify({type:'click_icon', index:index}));
+    safeInvoke(JSON.stringify({type:'click_icon', index:index}));
 }
 function onIconDblClick(index) {
-    window.external.invoke(JSON.stringify({type:'click_icon', index:index}));
+    safeInvoke(JSON.stringify({type:'click_icon', index:index}));
 }
 function closeWin(id) {
-    window.external.invoke(JSON.stringify({type:'close_window', id:id}));
+    safeInvoke(JSON.stringify({type:'close_window', id:id}));
 }
 function focusWin(id) {
-    window.external.invoke(JSON.stringify({type:'focus_window', id:id}));
+    safeInvoke(JSON.stringify({type:'focus_window', id:id}));
 }
 
 // ---- Window dragging ----
@@ -444,7 +455,7 @@ function startDrag(e, winId) {
     const el = e.currentTarget.parentElement;
     const rect = el.getBoundingClientRect();
     dragState = { windowId: winId, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top };
-    window.external.invoke(JSON.stringify({type:'focus_window', id:winId}));
+    safeInvoke(JSON.stringify({type:'focus_window', id:winId}));
 }
 
 // ---- Helpers ----
@@ -458,12 +469,19 @@ function escAttr(s) {
 }
 
 // ---- Startup poll ----
-pollInterval = setInterval(function() {
-    window.external.invoke(JSON.stringify({type:'poll'}));
-}, 100);
+function startPolling() {
+    if (!safeInvoke(JSON.stringify({type:'init'}))) {
+        // Bridge not ready yet, retry in 50ms
+        setTimeout(startPolling, 50);
+        return;
+    }
+    pollInterval = setInterval(function() {
+        safeInvoke(JSON.stringify({type:'poll'}));
+    }, 100);
+}
 
-// Initial request
-window.external.invoke(JSON.stringify({type:'init'}));
+// Don't fire immediately — wait for webview bridge polyfill
+setTimeout(startPolling, 150);
 </script>
 </body>
 </html>

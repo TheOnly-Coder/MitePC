@@ -1,0 +1,7 @@
+/target
+*.mite
+/mite
+*.swp
+*.swo
+*~
+miteos.mite

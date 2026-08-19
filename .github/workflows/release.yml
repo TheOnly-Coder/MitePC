@@ -1,0 +1,186 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} (${{ matrix.feature-set }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux GUI ──
+          - os: linux
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            feature-set: gui
+            artifact-suffix: linux-x86_64-gui
+            setup-conf-os-type: gui
+          # ── Linux Terminal-only ──
+          - os: linux
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            feature-set: terminal
+            artifact-suffix: linux-x86_64-terminal
+            setup-conf-os-type: terminal
+          # ── Windows GUI ──
+          - os: windows
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            feature-set: gui
+            artifact-suffix: windows-x86_64-gui
+            setup-conf-os-type: gui
+          # ── Windows Terminal-only ──
+          - os: windows
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            feature-set: terminal
+            artifact-suffix: windows-x86_64-terminal
+            setup-conf-os-type: terminal
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Linux: install WebKitGTK + GTK3 + build tools ──
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}-${{ matrix.feature-set }}
+
+      # ── Build ──
+      - name: Build (GUI)
+        if: matrix.feature-set == 'gui'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (Terminal-only)
+        if: matrix.feature-set == 'terminal'
+        run: cargo build --release --target ${{ matrix.target }} --no-default-features
+
+      # ── Package artifacts ──
+      - name: Package Linux archive
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p package/mitepc
+          cp target/${{ matrix.target }}/release/mitepc package/mitepc/
+          cp setup.conf package/mitepc/
+          cp README.md  package/mitepc/ 2>/dev/null || true
+          cd package
+          tar czf ../../mitepc-${{ matrix.artifact-suffix }}.tar.gz mitepc/
+
+      - name: Package Windows archive
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package/mitepc
+          Copy-Item "target/${{ matrix.target }}/release/mitepc.exe" "package/mitepc/"
+          Copy-Item "setup.conf" "package/mitepc/"
+          if (Test-Path "README.md") { Copy-Item "README.md" "package/mitepc/" }
+          Compress-Archive -Path "package/mitepc" -DestinationPath "mitepc-${{ matrix.artifact-suffix }}.zip"
+
+      # ── Upload build artifact (kept for 30 days) ──
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mitepc-${{ matrix.artifact-suffix }}
+          path: |
+            mitepc-${{ matrix.artifact-suffix }}.tar.gz
+            mitepc-${{ matrix.artifact-suffix }}.zip
+          retention-days: 30
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect release files
+        run: |
+          mkdir -p release-assets
+          find artifacts/ -type f \( -name '*.tar.gz' -o -name '*.zip' \) \
+            -exec cp {} release-assets/ \;
+          echo "--- Release assets ---"
+          ls -lh release-assets/
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          # Grab commit messages since last tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s (%h)" --no-merges 2>/dev/null || echo "")
+          else
+            CHANGES=$(git log --pretty=format:"- %s (%h)" --no-merges -20 2>/dev/null || echo "")
+          fi
+          {
+            echo "## What's Changed"
+            echo ""
+            if [ -n "$CHANGES" ]; then
+              echo "$CHANGES"
+            else
+              echo "- Initial release"
+            fi
+            echo ""
+            echo "## Downloads"
+            echo ""
+            echo "| Platform | Variant | File |"
+            echo "|----------|---------|------|"
+            for f in release-assets/*; do
+              fname=$(basename "$f")
+              echo "| $(echo $fname | sed 's/mitepc-//;s/\..*//' | tr '-' ' ') | --- | \`$fname\` |"
+            done
+            echo ""
+            echo "### Notes"
+            echo "- **GUI** builds require WebView runtime: WebKitGTK on Linux, WebView2 on Windows (pre-installed on Win10/11)"
+            echo "- **Terminal** builds run in any terminal with no extra dependencies"
+            echo "- Extract the archive and run \`mitepc\` (or \`mitepc.exe\` on Windows)"
+          } > RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.changelog.outputs.tag }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ contains(steps.changelog.outputs.tag, '-') }}
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

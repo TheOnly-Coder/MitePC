@@ -111,9 +111,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mitepc-${{ matrix.artifact-suffix }}
-          path: |
-            mitepc-${{ matrix.artifact-suffix }}.tar.gz
-            mitepc-${{ matrix.artifact-suffix }}.zip
+          path: mitepc-${{ matrix.artifact-suffix }}.*
           retention-days: 30
 
   release:

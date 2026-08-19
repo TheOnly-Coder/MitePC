@@ -13,6 +13,7 @@ jobs:
   build:
     name: Build ${{ matrix.os }} (${{ matrix.feature-set }})
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -75,6 +76,8 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}-${{ matrix.feature-set }}
+          cache-all-crates: true
+          save-if: ${{ always() }}
 
       # ── Build ──
       - name: Build (GUI)

@@ -364,15 +364,6 @@ mod gui_backend {
             .debug(true)
             .user_data(state)
             .invoke_handler(handle_invoke)
-            .init(|webview| {
-                // Push initial state once the webview is fully ready.
-                // This guarantees the JS side has the bridge polyfill
-                // injected before we send data.
-                let state = build_state(&webview.user_data().os);
-                if let Ok(s) = serde_json::to_string(&state) {
-                    let _ = webview.eval(&format!("updateState({})", s));
-                }
-            })
             .run()
             .map_err(|e| format!("WebView error: {}", e))?;
 

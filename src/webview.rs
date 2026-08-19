@@ -356,15 +356,24 @@ mod gui_backend {
         eprintln!("╚══════════════════════════════════════════╝");
         eprintln!();
 
-        web_view::builder()
-            .title("MitePC — MiteOS")
-            .content(Content::Html(get_html()))
+        // Build with about:blank, then set HTML via set_html.
+        // This is more robust than Content::Html (data:text/html URI)
+        // which can have issues with JS bridge injection on some platforms.
+        let mut wv = web_view::builder()
+            .title("MitePC \u{2014} MiteOS")
+            .content(Content::Url("about:blank"))
             .size(1024, 700)
             .resizable(true)
             .debug(true)
             .user_data(state)
             .invoke_handler(handle_invoke)
-            .run()
+            .build()
+            .map_err(|e| format!("WebView build error: {}", e))?;
+
+        wv.set_html(get_html())
+            .map_err(|e| format!("WebView set_html error: {}", e))?;
+
+        wv.run()
             .map_err(|e| format!("WebView error: {}", e))?;
 
         running.store(false, Ordering::SeqCst);

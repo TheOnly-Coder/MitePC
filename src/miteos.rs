@@ -161,10 +161,16 @@ pub trait App {
     fn on_open(&mut self, _window: &mut Window, _fs: &mut MiteFS) {}
     /// Handle a key event. Return true if the event was consumed.
     fn on_key(&mut self, key: KeyEvent, window: &mut Window, fs: &mut MiteFS, _ctx: &OsContext) -> bool;
-    /// Render the app content into the display.
+    /// Render the app content into the display (crossterm backend).
     fn on_draw(&mut self, display: &mut Display, window: &Window, ctx: &OsContext);
     /// Get the app type.
     fn app_type(&self) -> AppType;
+    /// Serialize app content as JSON for the WebView backend.
+    /// Returns a JSON string representing the app's visual state.
+    /// Each app should override this to provide its content for the HTML frontend.
+    fn webview_content_json(&self, _window: &Window, _ctx: &OsContext) -> String {
+        "{}".to_string()
+    }
 }
 
 // ---- Built-in Applications ----
@@ -311,6 +317,20 @@ impl App for FileManagerApp {
     }
 
     fn app_type(&self) -> AppType { AppType::FileManager }
+
+    fn webview_content_json(&self, _window: &Window, _ctx: &OsContext) -> String {
+        let entries_json: Vec<String> = self.entries.iter().map(|(_, name, itype)| {
+            format!("{{\"name\":\"{}\",\"type\":{}}}", name.replace('"', "\\\""), itype)
+        }).collect();
+        format!(r#"{{"currentPath":"{}","selected":{},"entries":[{}],"status":" {} items | Sel: {}/{} "}}"#,
+            self.current_path,
+            self.selected,
+            entries_json.join(","),
+            self.entries.len(),
+            self.selected + 1,
+            self.entries.len()
+        )
+    }
 }
 
 // -- System Info --
@@ -392,6 +412,11 @@ impl App for SystemInfoApp {
     }
 
     fn app_type(&self) -> AppType { AppType::SystemInfo }
+
+    fn webview_content_json(&self, _window: &Window, _ctx: &OsContext) -> String {
+        // SystemInfo doesn't need app-specific content; the JS reads from state.systemInfo
+        "{}".to_string()
+    }
 }
 
 // -- Terminal --
@@ -625,6 +650,14 @@ impl App for TerminalApp {
     }
 
     fn app_type(&self) -> AppType { AppType::Terminal }
+
+    fn webview_content_json(&self, _window: &Window, _ctx: &OsContext) -> String {
+        let lines_json: Vec<String> = self.lines.iter().map(|l| l.replace('\\', "\\\\").replace('"', "\\\"")).collect();
+        let input_escaped = self.input.replace('\\', "\\\\").replace('"', "\\\"");
+        let lines_arr = lines_json.iter().map(|l| format!("\"{}\"", l)).collect::<Vec<_>>().join(",");
+        format!("{{\"lines\":[{}],\"input\":\"{}\",\"prompt\":\">\",\"windowId\":{}}}",
+            lines_arr, input_escaped, _window.id)
+    }
 }
 
 // -- Settings --
@@ -690,6 +723,13 @@ impl App for SettingsApp {
     }
 
     fn app_type(&self) -> AppType { AppType::Settings }
+
+    fn webview_content_json(&self, _window: &Window, _ctx: &OsContext) -> String {
+        let options_json: Vec<String> = self.options.iter().map(|(k, v)| {
+            format!("{{\"key\":\"{}\",\"value\":\"{}\"}}", k.replace('"', "\\\""), v.replace('"', "\\\""))
+        }).collect();
+        format!("{{\"selected\":{},\"options\":[{}]}}", self.selected, options_json.join(","))
+    }
 }
 
 // -- About --
@@ -741,6 +781,11 @@ impl App for AboutApp {
     }
 
     fn app_type(&self) -> AppType { AppType::About }
+
+    fn webview_content_json(&self, _window: &Window, _ctx: &OsContext) -> String {
+        // About app content is rendered entirely by the JS frontend
+        "{}".to_string()
+    }
 }
 
 // -- Text Viewer --
@@ -803,6 +848,14 @@ impl App for TextViewerApp {
     }
 
     fn app_type(&self) -> AppType { AppType::TextViewer }
+
+    fn webview_content_json(&self, _window: &Window, _ctx: &OsContext) -> String {
+        let lines_json: Vec<String> = self.content.lines()
+            .map(|l| l.replace('\\', "\\\\").replace('"', "\\\""))
+            .map(|l| format!("\"{}\"", l))
+            .collect();
+        format!("{{\"lines\":[{}],\"scroll\":{}}}", lines_json.join(","), self.scroll)
+    }
 }
 
 
@@ -1208,5 +1261,81 @@ impl MiteOS {
     /// Update internal state (uptime, etc.). Called every second.
     pub fn tick(&mut self) {
         self.uptime_secs += 1;
+    }
+
+    // ---- WebView backend accessors ----
+    // These methods expose internal state for the webview.rs module
+    // to build JSON state updates for the HTML/CSS/JS frontend.
+    // They are only used when the "gui" feature is enabled.
+    #[allow(dead_code)]
+    /// Whether the boot sequence is complete.
+    pub fn boot_complete(&self) -> bool {
+        self.boot_complete
+    }
+
+    /// Get a copy of the boot messages.
+    #[allow(dead_code)]
+    pub fn boot_messages(&self) -> Vec<String> {
+        self.boot_messages.clone()
+    }
+
+    /// Force the boot sequence to complete (called from webview on Enter).
+    #[allow(dead_code)]
+    pub fn force_boot_complete(&mut self) {
+        self.boot_complete = true;
+    }
+
+    /// Get the desktop icons (type, label, description).
+    #[allow(dead_code)]
+    pub fn desktop_icons(&self) -> &[(AppType, String, String)] {
+        &self.desktop_icons
+    }
+
+    /// Get the currently selected desktop icon index.
+    #[allow(dead_code)]
+    pub fn selected_icon(&self) -> usize {
+        self.selected_icon
+    }
+
+    /// Get a reference to all windows.
+    #[allow(dead_code)]
+    pub fn windows(&self) -> &[Window] {
+        &self.windows
+    }
+
+    /// Iterate over windows and their apps simultaneously for state serialization.
+    /// Returns (window_id, window_ref, app_ref) tuples.
+    #[allow(dead_code)]
+    pub fn windows_and_apps(&self) -> Vec<(usize, Window, &dyn App)> {
+        self.windows.iter().filter_map(|w| {
+            self.apps.get(&w.id).map(|app| (w.id, w.clone(), app.as_ref()))
+        }).collect()
+    }
+
+    /// Open an app by desktop icon index (called from webview on icon click/double-click).
+    #[allow(dead_code)]
+    pub fn open_app_by_index(&mut self, index: usize) {
+        if let Some((app_type, _, _)) = self.desktop_icons.get(index) {
+            // Create a dummy display for window sizing (webview doesn't use it for rendering)
+            let display = Display::new(120, 40);
+            self.open_app(*app_type, &display);
+        }
+    }
+
+    /// Focus a specific window by ID (called from webview on window click).
+    #[allow(dead_code)]
+    pub fn focus_window(&mut self, id: usize) {
+        for w in &mut self.windows {
+            w.focused = w.id == id;
+        }
+    }
+
+    /// Handle a key event (called from the webview backend).
+    /// Uses a synthetic display for window sizing since the webview
+    /// doesn't use the crossterm Display for rendering.
+    #[allow(dead_code)]
+    pub fn handle_key_webview(&mut self, key: KeyEvent) {
+        let display = Display::new(120, 40);
+        self.handle_key(key, &display);
     }
 }

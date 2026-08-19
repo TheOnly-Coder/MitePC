@@ -1,13 +1,20 @@
 [package]
 name = "mitepc"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "A PC simulator running MiteOS with custom RAM, CPU, and Storage"
+description = "A PC simulator running MiteOS with custom RAM, CPU, and Storage - supports WebView GUI and Terminal modes"
 authors = ["TheOnly-Coder"]
+
+[features]
+default = ["gui"]
+gui = ["web-view", "serde", "serde_json"]
 
 [dependencies]
 crossterm = "0.28"
 chrono = "0.4"
+web-view = { version = "0.7", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
 
 [profile.release]
 opt-level = 2

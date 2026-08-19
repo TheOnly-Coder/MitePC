@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiteOS</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:#1a1a3e; color:#c8d2e6; user-select:none; }
+
+/* Desktop */
+#desktop { position:absolute; top:0; left:0; right:0; bottom:40px; overflow:hidden; }
+#boot-screen { position:absolute; top:0; left:0; right:0; bottom:0; background:#0a0a14; padding:40px; font-family:'Courier New',monospace; display:flex; flex-direction:column; }
+#boot-screen .msg { color:#64708a; white-space:pre; font-size:14px; line-height:1.6; }
+#boot-screen .msg.success { color:#32cd64; }
+#boot-screen .msg.info { color:#c8d2e6; }
+#boot-cursor { display:inline-block; color:#32cd64; animation:blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity:0; } }
+#boot-prompt { margin-top:12px; color:#32cd64; font-size:14px; cursor:pointer; }
+#boot-prompt:hover { text-decoration:underline; }
+
+/* Icons grid */
+#icons-container { position:absolute; top:20px; left:20px; display:flex; flex-wrap:wrap; gap:10px; align-content:flex-start; max-height:calc(100vh - 100px); }
+.desktop-icon { width:80px; height:80px; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:8px; cursor:pointer; transition:background 0.15s; border:2px solid transparent; }
+.desktop-icon:hover { background:rgba(70,130,255,0.15); }
+.desktop-icon.selected { background:rgba(70,130,255,0.3); border-color:rgba(70,130,255,0.6); }
+.desktop-icon .icon-emoji { font-size:32px; margin-bottom:4px; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+.desktop-icon .icon-label { font-size:11px; text-align:center; color:#8caaff; text-shadow:0 1px 3px rgba(0,0,0,0.8); line-height:1.2; word-break:break-word; max-width:72px; }
+
+/* Windows */
+.mite-window { position:absolute; border-radius:10px; overflow:hidden; box-shadow:0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3); display:flex; flex-direction:column; min-width:200px; min-height:120px; }
+.mite-window.focused { box-shadow:0 12px 48px rgba(70,130,255,0.2), 0 4px 16px rgba(0,0,0,0.4); z-index:100; }
+.window-titlebar { height:32px; display:flex; align-items:center; padding:0 10px; cursor:grab; flex-shrink:0; }
+.window-titlebar:active { cursor:grabbing; }
+.window-title { flex:1; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; pointer-events:none; }
+.window-buttons { display:flex; gap:8px; }
+.window-btn { width:14px; height:14px; border-radius:50%; border:none; cursor:pointer; transition:opacity 0.15s; opacity:0.8; }
+.window-btn:hover { opacity:1; }
+.window-btn.close { background:#ff5050; }
+.window-btn.minimize { background:#ffb432; }
+.window-btn.maximize { background:#32cd64; }
+.window-content { flex:1; overflow:auto; font-size:13px; line-height:1.5; }
+
+/* File Manager */
+.fm-path { padding:6px 10px; font-weight:700; font-size:14px; border-bottom:1px solid rgba(255,255,255,0.05); }
+.fm-separator { height:1px; background:rgba(255,255,255,0.05); }
+.fm-list { padding:4px 0; }
+.fm-entry { padding:4px 12px; cursor:pointer; display:flex; align-items:center; gap:8px; transition:background 0.1s; }
+.fm-entry:hover { background:rgba(70,130,255,0.1); }
+.fm-entry.selected { background:rgba(70,130,255,0.3); }
+.fm-entry .fm-icon { width:50px; font-weight:700; font-size:11px; flex-shrink:0; }
+.fm-entry .fm-icon.dir { color:#ffb432; }
+.fm-entry .fm-icon.file { color:#4682ff; }
+.fm-entry .fm-name { flex:1; }
+.fm-status { padding:4px 12px; border-top:1px solid rgba(255,255,255,0.05); font-size:11px; opacity:0.6; }
+
+/* Terminal */
+.terminal-output { padding:8px 10px; font-family:'Courier New',monospace; font-size:13px; line-height:1.5; white-space:pre-wrap; word-break:break-all; }
+.terminal-input-line { display:flex; align-items:center; padding:4px 10px; font-family:'Courier New',monospace; font-size:13px; }
+.terminal-input-line .prompt { color:#32cd64; margin-right:6px; white-space:nowrap; }
+.terminal-input { flex:1; background:transparent; border:none; outline:none; color:#32cd64; font-family:inherit; font-size:inherit; caret-color:#4682ff; }
+
+/* System Info */
+.sysinfo-content { padding:12px; }
+.sysinfo-section { margin-bottom:16px; }
+.sysinfo-section h3 { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin-bottom:8px; }
+.sysinfo-row { display:flex; justify-content:space-between; padding:3px 0; font-size:13px; }
+.sysinfo-row .label { opacity:0.7; }
+.sysinfo-bar { height:8px; border-radius:4px; background:rgba(255,255,255,0.08); margin:6px 0; overflow:hidden; }
+.sysinfo-bar-fill { height:100%; border-radius:4px; transition:width 0.3s; }
+
+/* Settings */
+.settings-content { padding:12px; }
+.settings-item { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-radius:6px; margin-bottom:2px; transition:background 0.1s; cursor:pointer; }
+.settings-item:hover { background:rgba(70,130,255,0.1); }
+.settings-item.selected { background:rgba(70,130,255,0.25); }
+.settings-item .s-key { font-size:13px; }
+.settings-item .s-val { font-size:13px; opacity:0.6; }
+.settings-footer { padding:8px 12px; border-top:1px solid rgba(255,255,255,0.05); font-size:11px; opacity:0.5; margin-top:8px; }
+
+/* About */
+.about-content { padding:20px; text-align:center; }
+.about-logo { font-size:20px; font-family:'Courier New',monospace; line-height:1.3; margin-bottom:16px; }
+.about-name { font-size:22px; font-weight:700; margin-bottom:8px; }
+.about-desc { font-size:13px; opacity:0.7; margin-bottom:20px; }
+.about-table { text-align:left; margin:0 auto; max-width:320px; }
+.about-row { display:flex; padding:4px 0; font-size:13px; border-bottom:1px solid rgba(255,255,255,0.04); }
+.about-row .a-label { width:100px; opacity:0.5; flex-shrink:0; }
+.about-row .a-value { flex:1; }
+.about-copy { margin-top:20px; font-size:11px; opacity:0.4; }
+
+/* Text Viewer */
+.viewer-content { padding:8px 10px; font-family:'Courier New',monospace; font-size:13px; line-height:1.5; white-space:pre-wrap; }
+.viewer-scrollbar { position:absolute; right:2px; top:34px; bottom:2px; width:6px; border-radius:3px; background:rgba(255,255,255,0.05); }
+.viewer-scrollbar .thumb { position:absolute; width:100%; border-radius:3px; background:rgba(70,130,255,0.6); transition:top 0.15s; }
+
+/* Taskbar */
+#taskbar { position:absolute; bottom:0; left:0; right:0; height:40px; display:flex; align-items:center; padding:0 8px; gap:6px; backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-top:1px solid rgba(255,255,255,0.05); }
+#taskbar-logo { font-weight:700; font-size:13px; padding:4px 10px; border-radius:6px; flex-shrink:0; }
+#taskbar-buttons { display:flex; gap:3px; flex:1; justify-content:center; overflow-x:auto; }
+.taskbar-btn { padding:4px 12px; border-radius:6px; font-size:12px; cursor:pointer; border:none; transition:background 0.15s; white-space:nowrap; max-width:140px; overflow:hidden; text-overflow:ellipsis; }
+.taskbar-btn:hover { filter:brightness(1.2); }
+#taskbar-right { display:flex; align-items:center; gap:8px; flex-shrink:0; margin-left:auto; }
+#taskbar-tray { font-size:11px; padding:3px 8px; border-radius:4px; }
+#taskbar-clock { font-size:12px; padding:3px 8px; border-radius:6px; }
+
+/* Scrollbars for window content */
+.window-content::-webkit-scrollbar { width:6px; }
+.window-content::-webkit-scrollbar-track { background:transparent; }
+.window-content::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:3px; }
+.window-content::-webkit-scrollbar-thumb:hover { background:rgba(255,255,255,0.25); }
+</style>
+</head>
+<body>
+
+<div id="desktop"></div>
+<div id="taskbar"></div>
+
+<script>
+// ---- State ----
+let currentState = null;
+let dragState = null; // { windowId, offsetX, offsetY }
+let highestZ = 10;
+let pollInterval = null;
+let terminalInputFocused = null;
+
+// ---- Boot screen keyboard handler ----
+document.addEventListener('keydown', function(e) {
+    if (!currentState) return;
+    if (currentState.phase === 'boot') {
+        if (e.code === 'Enter') {
+            e.preventDefault();
+            window.external.invoke(JSON.stringify({type:'boot_enter'}));
+        }
+        return;
+    }
+    // Desktop: route keys unless typing in terminal input
+    if (terminalInputFocused) {
+        // Allow terminal to handle typing, but still send special keys
+        if (e.code === 'Enter' || e.code === 'Backspace' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+            e.preventDefault();
+        }
+        window.external.invoke(JSON.stringify({
+            type: 'key',
+            code: e.code,
+            key: e.key,
+            ctrlKey: e.ctrlKey,
+            altKey: e.altKey,
+            shiftKey: e.shiftKey,
+        }));
+        return;
+    }
+    // Global desktop shortcuts
+    if (e.ctrlKey && e.key === 'c') {
+        window.external.invoke(JSON.stringify({type:'key', code:'Escape', key:'Escape', ctrlKey:true, altKey:false, shiftKey:false}));
+        return;
+    }
+    // Route all keys to OS
+    e.preventDefault();
+    window.external.invoke(JSON.stringify({
+        type: 'key',
+        code: e.code,
+        key: e.key,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+        shiftKey: e.shiftKey,
+    }));
+});
+
+// ---- State update from Rust ----
+function updateState(state) {
+    currentState = state;
+    render();
+}
+
+// ---- Render ----
+function render() {
+    if (!currentState) return;
+    const desktop = document.getElementById('desktop');
+    const taskbar = document.getElementById('taskbar');
+
+    if (currentState.phase === 'boot') {
+        renderBoot(desktop);
+        taskbar.style.display = 'none';
+        return;
+    }
+
+    taskbar.style.display = 'flex';
+    renderDesktop(desktop);
+    renderTaskbar(taskbar, currentState.taskbar, currentState.colors);
+}
+
+function renderBoot(container) {
+    const boot = currentState.boot;
+    let html = '<div id="boot-screen">';
+    for (const msg of boot.messages) {
+        let cls = 'msg';
+        if (msg.includes('...')) cls += ' info';
+        if (msg.includes('complete')) cls += ' success';
+        html += '<div class="' + cls + '">' + escHtml(msg) + '</div>';
+    }
+    if (boot.cursorVisible) {
+        html += '<span id="boot-cursor">_</span>';
+    }
+    html += '<div id="boot-prompt" onclick="window.external.invoke(JSON.stringify({type:\'boot_enter\'}))">Press Enter to start desktop...</div>';
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function renderDesktop(container) {
+    const c = currentState.colors;
+    const desktop = currentState.desktop;
+    container.style.background = c.desktopBg;
+
+    let html = '<div id="icons-container">';
+    for (const icon of desktop.icons) {
+        const sel = icon.index === desktop.selectedIcon ? ' selected' : '';
+        html += '<div class="desktop-icon' + sel + '" data-index="' + icon.index + '" ondblclick="onIconDblClick(' + icon.index + ')" onclick="onIconClick(' + icon.index + ')">';
+        html += '<div class="icon-emoji">' + escHtml(icon.iconChar) + '</div>';
+        html += '<div class="icon-label">' + escHtml(icon.label) + '</div>';
+        html += '</div>';
+    }
+    html += '</div>';
+
+    // Windows
+    for (const win of currentState.windows) {
+        const focused = win.focused ? ' focused' : '';
+        const zIdx = win.focused ? ++highestZ : highestZ - 1;
+        html += '<div class="mite-window' + focused + '" data-win-id="' + win.id + '" style="left:' + win.x + 'px;top:' + win.y + 'px;width:' + win.w + 'px;height:' + win.h + 'px;z-index:' + zIdx + ';background:' + c.windowBg + ';border:1px solid ' + (win.focused ? c.windowBorder : 'rgba(100,110,130,0.3)') + ';">';
+
+        // Titlebar
+        html += '<div class="window-titlebar" style="background:' + c.windowBg + ';" data-win-id="' + win.id + '" onmousedown="startDrag(event,' + win.id + ')">';
+        html += '<div class="window-title" style="color:' + (win.focused ? c.windowTitle : c.textDim) + ';">' + escHtml(win.title) + '</div>';
+        html += '<div class="window-buttons">';
+        html += '<button class="window-btn close" onclick="closeWin(' + win.id + ')"></button>';
+        html += '</div></div>';
+
+        // Content
+        html += '<div class="window-content" style="color:' + c.text + ';">';
+        html += renderWindowContent(win, c);
+        html += '</div>';
+
+        html += '</div>';
+    }
+
+    container.innerHTML = html;
+}
+
+function renderWindowContent(win, c) {
+    const ct = win.content;
+    switch (win.appType) {
+        case 'Files': return renderFileManager(ct, c);
+        case 'Terminal': return renderTerminal(ct, c);
+        case 'System': return renderSystemInfo(ct, c);
+        case 'Settings': return renderSettings(ct, c);
+        case 'About': return renderAbout(ct, c);
+        case 'Viewer': return renderViewer(ct, c);
+        default: return '<div style="padding:12px;">Unknown app: ' + escHtml(win.appType) + '</div>';
+    }
+}
+
+function renderFileManager(ct, c) {
+    let h = '<div class="fm-path" style="color:' + c.accent + ';">' + escHtml(ct.currentPath || '/') + '</div>';
+    h += '<div class="fm-separator"></div>';
+    h += '<div class="fm-list">';
+    if (ct.entries) {
+        for (let i = 0; i < ct.entries.length; i++) {
+            const e = ct.entries[i];
+            const sel = i === ct.selected ? ' selected' : '';
+            const isDir = e.type === 1;
+            h += '<div class="fm-entry' + sel + '">';
+            h += '<div class="fm-icon ' + (isDir ? 'dir' : 'file') + '">' + (isDir ? '[DIR]' : '[FILE]') + '</div>';
+            h += '<div class="fm-name">' + escHtml(e.name) + '</div>';
+            h += '</div>';
+        }
+    }
+    h += '</div>';
+    if (ct.status) {
+        h += '<div class="fm-status">' + escHtml(ct.status) + '</div>';
+    }
+    return h;
+}
+
+function renderTerminal(ct, c) {
+    let h = '<div class="terminal-output">';
+    if (ct.lines) {
+        for (const line of ct.lines) {
+            h += escHtml(line) + '\n';
+        }
+    }
+    h += '</div>';
+    h += '<div class="terminal-input-line" style="background:' + (c.inputBg || 'rgba(25,25,50,1)') + ';">';
+    h += '<span class="prompt">' + escHtml(ct.prompt || '>') + '</span>';
+    h += '<input class="terminal-input" type="text" value="' + escAttr(ct.input || '') + '" spellcheck="false" autocomplete="off" onfocus="terminalInputFocused=true" onblur="terminalInputFocused=false" data-term-id="' + (ct.windowId || 0) + '">';
+    h += '</div>';
+    return h;
+}
+
+function renderSystemInfo(ct, c) {
+    const si = ct.systemInfo || currentState.systemInfo;
+    if (!si) return '<div style="padding:12px;">No system info</div>';
+    let h = '<div class="sysinfo-content">';
+
+    // Hardware
+    h += '<div class="sysinfo-section"><h3 style="color:' + c.accent + ';">Hardware</h3>';
+    h += sysRow('CPU', 'Mite-16 @ ' + si.cpuMhz + ' MHz');
+    h += sysRow('Cores', si.cpuCores);
+    h += sysRow('Instructions', si.cpuInstructions.toLocaleString());
+    h += '</div>';
+
+    // RAM
+    h += '<div class="sysinfo-section"><h3 style="color:' + c.accent + ';">Memory</h3>';
+    const ramMB = Math.round(si.ramSize / 1048576);
+    h += sysRow('RAM', ramMB + ' MB');
+    h += sysRow('Pages', si.ramUsedPages + ' / ' + si.ramTotalPages + ' used (' + si.ramUsagePercent.toFixed(1) + '%)');
+    h += '<div class="sysinfo-bar"><div class="sysinfo-bar-fill" style="width:' + Math.min(si.ramUsagePercent, 100) + '%;background:' + c.success + ';"></div></div>';
+    h += '</div>';
+
+    // Storage
+    h += '<div class="sysinfo-section"><h3 style="color:' + c.accent + ';">Storage</h3>';
+    const storMB = Math.round(si.fsTotalSize / 1048576);
+    const usedMB = Math.round((si.fsTotalBlocks - si.fsFreeBlocks) * 4096 / 1048576);
+    h += sysRow('Image', storMB + ' MB');
+    h += sysRow('Used', usedMB + ' / ' + storMB + ' MB');
+    h += sysRow('Inodes', si.fsFreeInodes + ' / ' + si.fsTotalInodes + ' free');
+    h += sysRow('Blocks', si.fsFreeBlocks + ' / ' + si.fsTotalBlocks + ' free');
+    h += '</div>';
+
+    // OS
+    h += '<div class="sysinfo-section"><h3 style="color:' + c.accent + ';">MiteOS</h3>';
+    h += sysRow('Version', '1.0.0');
+    h += sysRow('Arch', 'mite-16 (custom ISA)');
+    h += sysRow('Kernel', 'MiteMicro');
+    h += sysRow('FS', 'MiteFS (.mite format)');
+    h += sysRow('Display', 'WebView GUI');
+    h += sysRow('Uptime', si.uptimeSecs + 's');
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+}
+
+function sysRow(label, value) {
+    return '<div class="sysinfo-row"><span class="label">' + escHtml(label) + '</span><span>' + escHtml(String(value)) + '</span></div>';
+}
+
+function renderSettings(ct, c) {
+    let h = '<div class="settings-content">';
+    h += '<div style="font-weight:700;font-size:15px;padding:4px 12px 8px;color:' + c.accent + ';">Settings</div>';
+    if (ct.options) {
+        for (let i = 0; i < ct.options.length; i++) {
+            const o = ct.options[i];
+            const sel = i === ct.selected ? ' selected' : '';
+            h += '<div class="settings-item' + sel + '"><span class="s-key">' + escHtml(o.key) + '</span><span class="s-val">' + escHtml(o.value) + '</span></div>';
+        }
+    }
+    h += '<div class="settings-footer">Navigate: Up/Down | Values: read-only display</div>';
+    h += '</div>';
+    return h;
+}
+
+function renderAbout(ct, c) {
+    let h = '<div class="about-content">';
+    h += '<div class="about-logo" style="color:' + c.highlight + ';">  __  __ _       _ _   _ _   _ <br>|  \\/  (_)_ __ (_) | | | \\ | |<br>| |/| | | \'\\ | | | | |  \\| |<br>| |  | | | | | | | |_| | |\\  |<br>|_|  |_|_|_| |_|_|\\___/|_| \\_|</div>';
+    h += '<div class="about-name" style="color:' + c.accent + ';">MiteOS v1.0.0</div>';
+    h += '<div class="about-desc">A minimal GUI-based operating system<br>built for the MitePC simulator.</div>';
+    h += '<div class="about-table">';
+    h += aboutRow('Architecture', 'Mite-16 (custom ISA)');
+    h += aboutRow('Kernel', 'MiteMicro');
+    h += aboutRow('Filesystem', 'MiteFS (.mite format)');
+    h += aboutRow('Display', 'WebView GUI');
+    h += aboutRow('Note', 'NOT based on Linux');
+    h += '</div>';
+    h += '<div class="about-copy">(c) MitePC Project</div>';
+    h += '</div>';
+    return h;
+}
+
+function aboutRow(label, value) {
+    return '<div class="about-row"><span class="a-label">' + escHtml(label) + '</span><span class="a-value">' + escHtml(value) + '</span></div>';
+}
+
+function renderViewer(ct, c) {
+    let h = '<div class="viewer-content">';
+    if (ct.lines) {
+        for (const line of ct.lines) {
+            h += escHtml(line) + '\n';
+        }
+    }
+    h += '</div>';
+    return h;
+}
+
+function renderTaskbar(taskbar, tb, c) {
+    let h = '<div id="taskbar-logo" style="color:' + c.accent + ';background:' + c.taskbarBg + ';">MiteOS</div>';
+    h += '<div id="taskbar-buttons">';
+    for (const btn of tb.windowButtons) {
+        const bg = btn.focused ? c.highlight : 'transparent';
+        const fg = btn.focused ? '#fff' : c.taskbarFg;
+        h += '<button class="taskbar-btn" style="background:' + bg + ';color:' + fg + ';" onclick="focusWin(' + btn.id + ')">' + escHtml(btn.title.length > 12 ? btn.title.substring(0,12) + '..' : btn.title) + '</button>';
+    }
+    h += '</div>';
+    h += '<div id="taskbar-right">';
+    const ramColor = tb.ramPercent > 80 ? c.error : c.success;
+    h += '<div id="taskbar-tray" style="color:' + ramColor + ';background:' + c.taskbarBg + ';">RAM:' + tb.ramPercent.toFixed(0) + '%</div>';
+    h += '<div id="taskbar-clock" style="color:' + c.taskbarFg + ';background:' + c.taskbarBg + ';"> ' + tb.time + ' </div>';
+    h += '</div>';
+    taskbar.style.background = c.taskbarBg;
+    taskbar.style.color = c.taskbarFg;
+    taskbar.innerHTML = h;
+}
+
+// ---- Interaction ----
+
+function onIconClick(index) {
+    window.external.invoke(JSON.stringify({type:'click_icon', index:index}));
+}
+function onIconDblClick(index) {
+    window.external.invoke(JSON.stringify({type:'click_icon', index:index}));
+}
+function closeWin(id) {
+    window.external.invoke(JSON.stringify({type:'close_window', id:id}));
+}
+function focusWin(id) {
+    window.external.invoke(JSON.stringify({type:'focus_window', id:id}));
+}
+
+// ---- Window dragging ----
+document.addEventListener('mousemove', function(e) {
+    if (!dragState) return;
+    const dx = e.clientX - dragState.offsetX;
+    const dy = e.clientY - dragState.offsetY;
+    const el = document.querySelector('[data-win-id="' + dragState.windowId + '"]');
+    if (el) {
+        el.style.left = dx + 'px';
+        el.style.top = dy + 'px';
+    }
+});
+document.addEventListener('mouseup', function() {
+    dragState = null;
+});
+function startDrag(e, winId) {
+    if (e.target.classList.contains('window-btn')) return;
+    const el = e.currentTarget.parentElement;
+    const rect = el.getBoundingClientRect();
+    dragState = { windowId: winId, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top };
+    window.external.invoke(JSON.stringify({type:'focus_window', id:winId}));
+}
+
+// ---- Helpers ----
+function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ---- Startup poll ----
+pollInterval = setInterval(function() {
+    window.external.invoke(JSON.stringify({type:'poll'}));
+}, 100);
+
+// Initial request
+window.external.invoke(JSON.stringify({type:'init'}));
+</script>
+</body>
+</html>

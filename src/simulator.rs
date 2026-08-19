@@ -1,11 +1,16 @@
 /**
  * The MitePC Simulator — ties all hardware and software components together.
  *
- * The simulator:
- * 1. Reads setup.conf for hardware configuration
- * 2. Initializes RAM, CPU, Display, and Storage (MiteFS)
- * 3. Boots MiteOS
- * 4. Runs the main loop: input → CPU cycles → OS update → display render
+ * The simulator supports two display backends:
+ * 1. **WebView (GUI mode)** — When `os_type = gui` in setup.conf, opens a
+ *    native window via Boscop/web-view (WebKitGTK/WebView2/WKWebView) and
+ *    renders MiteOS as a real HTML/CSS/JS GUI. This is used for GUI-based
+ *    operating systems like MiteOS.
+ * 2. **Crossterm (Terminal mode)** — When `os_type = terminal`, renders
+ *    MiteOS as a character-cell display in the host terminal. This is used
+ *    for terminal-only operating systems.
+ *
+ * The backend is selected at startup based on the configuration.
  */
 
 use crate::config::SimulatorConfig;
@@ -16,7 +21,8 @@ use std::io;
 use std::thread;
 use std::time::{Duration, Instant};
 
-/// The main simulator engine.
+/// The main simulator engine (crossterm/terminal backend).
+/// When os_type = gui, the webview module handles the simulation instead.
 pub struct Simulator {
     pub config: SimulatorConfig,
     pub display: Display,
@@ -26,7 +32,7 @@ pub struct Simulator {
 }
 
 impl Simulator {
-    /// Build the simulator from configuration.
+    /// Build the simulator from configuration (crossterm backend).
     pub fn build(config: SimulatorConfig) -> Result<Self, String> {
         let ram = crate::ram::Ram::new(config.ram_mb);
         let cpu = crate::cpu::Cpu::new(config.cpu_mhz);
@@ -60,20 +66,21 @@ impl Simulator {
         let ram_mb = self.os.ram.size() / (1024 * 1024);
         let storage_path = self.config.os_image.display();
         eprintln!("╔══════════════════════════════════════════╗");
-        eprintln!("║         MitePC Simulator v1.0.0          ║");
+        eprintln!("║         MitePC Simulator v0.2.0           ║");
         eprintln!("╠══════════════════════════════════════════╣");
-        eprintln!("║  CPU:     Mite-16 @ {:>4} MHz           ║", self.os.cpu.clock_mhz());
-        eprintln!("║  Cores:   {:>4}                            ║", self.os.config_cpu_cores);
-        eprintln!("║  RAM:     {:>4} MB                       ║", ram_mb);
-        eprintln!("║  Storage: {:>4} MB (.mite image)       ║", self.config.storage_mb);
-        eprintln!("║  Image:   {:<30}║", storage_path);
+        eprintln!("║  Display:  Crossterm (host terminal)      ║");
+        eprintln!("║  CPU:      Mite-16 @ {:>4} MHz           ║", self.os.cpu.clock_mhz());
+        eprintln!("║  Cores:    {:>4}                            ║", self.os.config_cpu_cores);
+        eprintln!("║  RAM:      {:>4} MB                       ║", ram_mb);
+        eprintln!("║  Storage:  {:>4} MB (.mite image)       ║", self.config.storage_mb);
+        eprintln!("║  Image:    {:<30}║", storage_path);
         eprintln!("╠══════════════════════════════════════════╣");
-        eprintln!("║  Starting MiteOS...  Ctrl+C to exit     ║");
+        eprintln!("║  Starting MiteOS...  Ctrl+C to exit      ║");
         eprintln!("╚══════════════════════════════════════════╝");
         eprintln!();
     }
 
-    /// Run the main simulation loop. Blocks until the user exits.
+    /// Run the main simulation loop (crossterm backend). Blocks until the user exits.
     pub fn run(&mut self) -> Result<(), String> {
         self.print_boot_info();
 
